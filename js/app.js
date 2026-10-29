@@ -10,8 +10,7 @@
     welcome = U.$('#welcome');
     W.init(U.$('#workspace'));
     I.init(U.$('#sidebar'));
-    const prof = U.store.get('profile', null);
-    if (prof && Array.isArray(prof.points)) Object.assign(S.profile, prof);
+    S.profiles = S.mergeProfiles(U.store.get('profiles', null), U.store.get('profile', null));
     const link = U.store.get('link', null);
     if (link) Object.assign(S.link, link);
     if (U.store.get('sidebar', true) === false) document.body.classList.add('no-sidebar');
@@ -43,6 +42,14 @@
   }
   const dsName = s => (S.dataset(s.datasetId) || {}).name || '';
   const hasKind = k => S.series.some(s => s.kind === k);
+  const PROFILE_NAME = {PSD: 'PSD', SPEC: '正弦波'};
+  const profileSet = k => S.profiles[k].points.length >= 2;
+  // プロファイルの画面で最初に開く種類（選択中グラフの種類 → データにある種類 → PSD）
+  function profileKind() {
+    const a = S.activeWin();
+    if (a && S.profileOf(a.y1Kind)) return a.y1Kind;
+    return S.PROFILE_KINDS.find(hasKind) || 'PSD';
+  }
 
   // ── 上部バー ────────────────────────────────────────────────────────────────
   function bindTopbar() {
@@ -52,24 +59,25 @@
       {label: 'フォルダを開く…', icon: 'folder', hint: 'フォルダ＝データセット', onClick: () => U.$('#in-dir').click()},
       '-',
       {label: 'セッションを開く…', icon: 'save', hint: '.json', onClick: () => U.$('#in-session').click()},
-      {label: 'サンプルデータを読み込む', icon: 'wave', onClick: App.loadSample},
+      {label: 'サンプルデータ', icon: 'wave', onClick: App.loadSample},
     ]);
     menu('#btn-add', () => {
       const kinds = S.kinds();
-      if (!kinds.length) return [{header: '先にデータを読み込んでください'}];
-      return [{header: '表示するデータの種類'}].concat(kinds.map(k => ({
+      if (!kinds.length) return [{header: 'データなし'}];
+      return [{header: 'データの種類'}].concat(kinds.map(k => ({
         label: P.kindLabel(k), hint: `${P.kindDesc(k)} · ${S.kindCount(k)}`, onClick: () => App.addWindow(k),
       })));
     });
     menu('#btn-arrange', () => [
-      {label: 'タイル（自動）', icon: 'layout', disabled: !S.windows.length, onClick: () => W.arrange('grid')},
-      {label: '横に並べる', icon: 'cols', disabled: !S.windows.length, onClick: () => W.arrange('cols')},
-      {label: '縦に並べる', icon: 'rows', disabled: !S.windows.length, onClick: () => W.arrange('rows')},
-      {label: '重ねて並べる', icon: 'cascade', disabled: !S.windows.length, onClick: () => W.arrange('cascade')},
+      {label: 'タイル', icon: 'layout', disabled: !S.windows.length, onClick: () => W.arrange('grid')},
+      {label: '横並び', icon: 'cols', disabled: !S.windows.length, onClick: () => W.arrange('cols')},
+      {label: '縦並び', icon: 'rows', disabled: !S.windows.length, onClick: () => W.arrange('rows')},
+      {label: '重ねる', icon: 'cascade', disabled: !S.windows.length, onClick: () => W.arrange('cascade')},
     ]);
     menu('#btn-analysis', () => [
-      {label: '加振プロファイル…', icon: 'profile', hint: S.profile.points.length >= 2 ? `${S.profile.points.length} 点` : '未設定', onClick: D.profile},
-      {label: '許容範囲チェック', disabled: !hasKind('PSD'), hint: 'PSD', onClick: App.runCheck},
+      {label: '加振プロファイル…', icon: 'profile', onClick: () => D.profile(profileKind()),
+        hint: S.PROFILE_KINDS.filter(profileSet).map(k => PROFILE_NAME[k]).join('・') || '未設定'},
+      {label: '許容範囲チェック', disabled: !S.PROFILE_KINDS.some(hasKind), hint: 'PSD / Spectrum', onClick: App.runCheck},
       {label: 'RMS 算出', disabled: !hasKind('PSD'), hint: 'PSD → Grms', onClick: App.runRms},
       '-',
       {label: 'ピーク解析（試験機能）', disabled: !S.windows.length, hint: '選択中のグラフ', onClick: App.runPeaks},
@@ -160,7 +168,7 @@
   App.loadItems = async function (items, keepOrder) {
     const data = items.filter(it => DATA_EXT.test(it.file.name) || !/\.[^./\\]+$/.test(it.file.name));
     let skipped = items.length - data.length;
-    if (!data.length) { U.toast('読み込めるファイル（.txt / .csv）がありません', 'warn'); return; }
+    if (!data.length) { U.toast('対象ファイルなし（.txt / .csv）', 'warn'); return; }
     const groups = new Map();
     for (const it of data) {
       const i = it.path.lastIndexOf('/');
@@ -197,16 +205,16 @@
   };
 
   function afterLoad(created, loaded, skipped) {
-    if (!created.length) { U.toast('データを読み取れませんでした（ファイル形式を確認してください）', 'warn'); return; }
+    if (!created.length) { U.toast('読み取れるデータなし', 'warn'); return; }
     if (!S.windows.length) createDefaultWindows(created);
     else {
       const shown = new Set(S.windows.flatMap(w => [w.y1Kind, w.y2Kind]));
       const ids = new Set(created.map(d => d.id));
       const fresh = U.unique(S.series.filter(s => ids.has(s.datasetId)).map(s => s.kind)).filter(k => !shown.has(k));
-      if (fresh.length) U.toast(`未表示の種類: ${fresh.map(P.kindLabel).join('、')}（「グラフ追加」から表示できます）`, 'info', 6000);
+      if (fresh.length) U.toast(`未表示の種類: ${fresh.map(P.kindLabel).join('、')}`, 'info', 6000);
     }
     refreshAll();
-    U.toast(`${loaded} ファイルを読み込みました（データセット ${created.length} 件${skipped ? `、${skipped} 件は対象外` : ''}）`, 'ok');
+    U.toast(`${loaded} ファイル読み込み（データセット ${created.length}${skipped ? `、対象外 ${skipped}` : ''}）`, 'ok');
   }
   function createDefaultWindows(created) {
     const kinds = S.kinds();
@@ -223,7 +231,7 @@
     S.activeWinId = S.windows[0].id;
     W.arrange('grid');
     W.markActive();
-    if (many) U.toast('データセットが多いため 1 つのデータセットだけを表示（右の「グラフ設定」で追加）', 'info', 7000);
+    if (many) U.toast('各グラフはデータセット 1 つ（グラフ設定で追加）', 'info', 7000);
   }
 
   // ── ウィンドウ操作 ───────────────────────────────────────────────────────────
@@ -262,8 +270,8 @@
   };
   App.windowAction = function (win, act) {
     if (act === 'panel') { win.showPanel = !win.showPanel; W.applyRect(win); if (win.id === S.activeWinId) I.refresh(); }
-    else if (act === 'png') PL.download(win, 'png').catch(e => U.toast('保存できませんでした: ' + e.message, 'err'));
-    else if (act === 'copy') PL.copy(win).then(() => U.toast('グラフの画像をコピーしました', 'ok')).catch(e => U.toast(e.message || 'コピーできませんでした', 'err'));
+    else if (act === 'png') PL.download(win, 'png').catch(e => U.toast('保存失敗: ' + e.message, 'err'));
+    else if (act === 'copy') PL.copy(win).then(() => U.toast('コピー完了', 'ok')).catch(e => U.toast(e.message || 'コピー失敗', 'err'));
     else if (act === 'dup') App.duplicate(win);
     else if (act === 'max') W.toggleMax(win);
     else if (act === 'close') App.closeWindow(win);
@@ -303,7 +311,7 @@
   App.onColorsChanged = function () { for (const w of S.windows) W.buildPanel(w); PL.renderAll(); };
   App.onDatasetRenamed = function () { for (const w of S.windows) { W.refreshHead(w); W.buildPanel(w); } PL.renderAll(); };
   App.onProfileChanged = function () {
-    U.store.set('profile', S.profile);
+    U.store.set('profiles', S.profiles);
     for (const w of S.windows) W.buildPanel(w);
     PL.renderAll();
     I.refresh();
@@ -382,30 +390,37 @@
     const a = g.log ? Math.pow(10, g.r0) : g.r0, b = g.log ? Math.pow(10, g.r1) : g.r1;
     return [Math.min(a, b), Math.max(a, b)];
   }
+  // PSD・Spectrum それぞれ、自分のプロファイルと比べる（選択中グラフの種類はその表示範囲内だけ）
   App.runCheck = function () {
-    const pts = S.profile.points;
-    if (pts.length < 2) { U.toast('加振プロファイルを設定してください', 'warn'); D.profile(); return; }
-    let lo = pts[0].f, hi = pts[pts.length - 1].f;
-    const r = viewRange('PSD');
-    if (r) { lo = Math.max(lo, r[0]); hi = Math.min(hi, r[1]); }
-    const rows = [];
-    for (const s of S.series.filter(q => q.kind === 'PSD')) {
-      const res = A.toleranceCheck({x: s.x, y: A.linearY(s)}, pts, S.profile.tolPlus, S.profile.tolMinus, lo, hi);
-      if (!res.total) continue;
-      rows.push([dsName(s), S.seriesName(s, false),
-        {text: res.pass ? '✓ 合格' : '✗ 不合格', cls: res.pass ? 'ok' : 'ng'},
-        `+${res.maxP.toFixed(2)} / ${res.maxM.toFixed(2)} dB`,
-        res.fail ? `${res.fail} / ${res.total} 点（最大超過 ${U.fmtF(res.worstF)} Hz）` : `0 / ${res.total} 点`]);
+    const kinds = S.PROFILE_KINDS.filter(k => hasKind(k) && profileSet(k));
+    if (!kinds.length) { U.toast('加振プロファイル未設定', 'warn'); D.profile(profileKind()); return; }
+    const rows = [], notes = [];
+    for (const kind of kinds) {
+      const pr = S.profiles[kind], pts = pr.points, k = A.dbScale(kind);
+      let lo = pts[0].f, hi = pts[pts.length - 1].f;
+      const r = viewRange(kind);
+      if (r) { lo = Math.max(lo, r[0]); hi = Math.min(hi, r[1]); }
+      notes.push(`${P.kindLabel(kind)}: ${pr.name}（+${pr.tolPlus} / −${pr.tolMinus} dB）${U.fmtF(lo)}–${U.fmtF(hi)} Hz${r ? '（表示範囲内）' : ''}`);
+      for (const s of S.series.filter(q => q.kind === kind)) {
+        const res = A.toleranceCheck({x: s.x, y: A.linearY(s)}, pts, pr.tolPlus, pr.tolMinus, lo, hi, k);
+        if (!res.total) continue;
+        rows.push([P.kindLabel(kind), dsName(s), S.seriesName(s, false),
+          {text: res.pass ? '✓ 合格' : '✗ 不合格', cls: res.pass ? 'ok' : 'ng'},
+          `+${res.maxP.toFixed(2)} / ${res.maxM.toFixed(2)} dB`,
+          res.fail ? `${res.fail} / ${res.total} 点（最大超過 ${U.fmtF(res.worstF)} Hz）` : `0 / ${res.total} 点`]);
+      }
     }
+    const unset = S.PROFILE_KINDS.filter(k => hasKind(k) && !profileSet(k));
+    if (unset.length) notes.push(`${unset.map(P.kindLabel).join('・')}: プロファイル未設定`);
     D.table({
       title: '許容範囲チェック',
-      note: `基準: ${S.profile.name}（+${S.profile.tolPlus} / −${S.profile.tolMinus} dB）　対象: ${U.fmtF(lo)}–${U.fmtF(hi)} Hz${r ? '（選択中の PSD グラフの表示範囲内）' : ''}`,
-      columns: ['データセット', '系列', '判定', '最大偏差（上 / 下）', '許容外の点'], rows,
-      empty: '対象範囲に PSD データがありません',
+      note: notes.join('\n'),
+      columns: ['種類', 'データセット', '系列', '判定', '最大偏差（上 / 下）', '許容外の点'], rows,
+      empty: '対象データなし',
     });
   };
   App.runRms = function () {
-    const pts = S.profile.points, hasProf = pts.length >= 2;
+    const pts = S.profiles.PSD.points, hasProf = pts.length >= 2;
     const r = viewRange('PSD');
     const rows = [];
     for (const s of S.series.filter(q => q.kind === 'PSD')) {
@@ -421,16 +436,16 @@
       rows.push([dsName(s), S.seriesName(s, false), rms.toFixed(3), `${U.fmtF(lo)}–${U.fmtF(hi)} Hz`,
         ref > 0 ? `${(20 * Math.log10(rms / ref)).toFixed(2)} dB（${((rms / ref - 1) * 100).toFixed(1)} %）` : '—']);
     }
-    const note = (hasProf ? `プロファイル: ${A.profileRms(pts).toFixed(3)} Grms（${U.fmtF(pts[0].f)}–${U.fmtF(pts[pts.length - 1].f)} Hz）。積分範囲はプロファイルの範囲` : '積分範囲は各データの全範囲（0 Hz を除く）')
-      + (r ? 'と、選択中の PSD グラフの表示範囲が重なる部分。' : 'です。');
-    D.table({title: 'RMS 算出（PSD → Grms）', note, columns: ['データセット', '系列', 'Grms', '積分範囲', 'プロファイル比'], rows, empty: 'PSD データがありません'});
+    const note = (hasProf ? `プロファイル: ${A.profileRms(pts).toFixed(3)} Grms（${U.fmtF(pts[0].f)}–${U.fmtF(pts[pts.length - 1].f)} Hz）` : 'プロファイル未設定')
+      + (r ? '（表示範囲内）' : '');
+    D.table({title: 'RMS 算出（PSD → Grms）', note, columns: ['データセット', '系列', 'Grms', '積分範囲', 'プロファイル比'], rows, empty: 'PSD データなし'});
   };
   App.runPeaks = function () {
     const win = S.activeWin();
-    if (!win) { U.toast('解析するグラフをクリックして選択してください', 'warn'); return; }
+    if (!win) { U.toast('グラフ未選択', 'warn'); return; }
     const {y1, y2} = S.windowSeries(win);
     const keys = new Set(y1.concat(y2).filter(s => !win.hidden[s.id]).map(s => s.datasetId + '|' + P.colorKey(s.channel)));
-    if (!keys.size) { U.toast('選択中のグラフに表示中の系列がありません', 'warn'); return; }
+    if (!keys.size) { U.toast('表示中の系列なし', 'warn'); return; }
     const groups = new Map();
     for (const s of S.series) {
       if (!keys.has(s.datasetId + '|' + P.colorKey(s.channel))) continue;
@@ -443,7 +458,7 @@
     }
     const range = viewRange();
     const res = A.findResonances([...groups.values()], range);
-    if (!res.length) { U.toast('有意なピークは見つかりませんでした', 'warn'); return; }
+    if (!res.length) { U.toast('ピークなし', 'warn'); return; }
     S.peaks = res;
     PL.renderAll();
     D.peaks(res, range);
@@ -453,28 +468,28 @@
   App.saveSession = function () {
     const blob = new Blob([JSON.stringify(S.serialize())], {type: 'application/json'});
     U.download(blob, `VTplot_session_${U.stamp()}.json`);
-    U.toast('セッションを保存しました（データ・配置・ラベルを含みます）', 'ok');
+    U.toast('セッション保存完了', 'ok');
   };
   App.openSession = async function (file) {
     let obj;
-    try { obj = JSON.parse(await file.text()); } catch (e) { U.toast('JSON として読み込めませんでした', 'err'); return; }
-    if (!obj || obj.app !== 'VTplot Web') { U.toast('VTplot Web のセッションファイルではありません', 'err'); return; }
-    if ((S.series.length || S.windows.length) && !confirm('今の作業内容を閉じて、セッションを開きますか？')) return;
+    try { obj = JSON.parse(await file.text()); } catch (e) { U.toast('JSON 読み込み失敗', 'err'); return; }
+    if (!obj || obj.app !== 'VTplot Web') { U.toast('非対応のファイル', 'err'); return; }
+    if ((S.series.length || S.windows.length) && !confirm('現在の内容を閉じて開きますか？')) return;
     for (const w of S.windows) W.unmount(w);
     try { S.restore(obj); } catch (e) { S.reset(); U.toast(e.message, 'err'); refreshAll(); return; }
     for (const w of S.windows) W.mount(w);
     W.markActive();
     refreshAll();
-    U.toast(`セッションを開きました（データセット ${S.datasets.length} 件・グラフ ${S.windows.length} 枚）`, 'ok');
+    U.toast(`セッション読み込み（データセット ${S.datasets.length}・グラフ ${S.windows.length}）`, 'ok');
   };
   App.clearAll = function () {
-    if (!confirm('読み込んだデータとグラフをすべて閉じますか？')) return;
+    if (!confirm('すべて閉じますか？')) return;
     for (const w of S.windows) W.unmount(w);
     S.reset();
     refreshAll();
   };
   App.exportWorkspace = function () {
-    PL.exportWorkspace().then(() => U.toast('全グラフを PNG で保存しました', 'ok')).catch(e => U.toast(e.message, 'err'));
+    PL.exportWorkspace().then(() => U.toast('保存完了', 'ok')).catch(e => U.toast(e.message, 'err'));
   };
 
   // ── サンプルデータ（Graduo 形式のテキストを生成して通常の読み込み経路に流す） ─────────
@@ -520,7 +535,10 @@
         }), dir));
       }
     }
-    if (S.profile.points.length < 2) { S.profile.points = prof; U.store.set('profile', S.profile); }
+    // サンプル用のプロファイル（未設定のときだけ）: ランダムは GEVS、正弦波は入力 0.5 G 一定
+    if (!profileSet('PSD')) S.profiles.PSD.points = prof;
+    if (!profileSet('SPEC')) S.profiles.SPEC.points = [{f: 20, v: 0.5}, {f: 2000, v: 0.5}];
+    U.store.set('profiles', S.profiles);
     App.loadItems(items, true);
   };
 })(globalThis.VT = globalThis.VT || {});

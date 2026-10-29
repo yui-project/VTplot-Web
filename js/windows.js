@@ -30,14 +30,14 @@
     const el = U.h('section', {class: 'win', dataset: {id: win.id}});
     el.innerHTML = `
       <header class="win-head">
-        <span class="win-title" title="ダブルクリックでタイトルを編集"></span>
+        <span class="win-title" title="ダブルクリックで編集"></span>
         <span class="win-badge"></span>
         <div class="win-tools">
-          <button class="wbtn" data-act="panel" title="系列パネルの表示 / 非表示">${U.icon('panel', 15)}</button>
-          <button class="wbtn" data-act="png" title="PNG で保存">${U.icon('download', 15)}</button>
-          <button class="wbtn" data-act="copy" title="画像をクリップボードにコピー">${U.icon('copy', 15)}</button>
-          <button class="wbtn" data-act="dup" title="このグラフを複製">${U.icon('dup', 15)}</button>
-          <button class="wbtn" data-act="max" title="最大化 / 元に戻す（タイトルバーのダブルクリックでも可）">${U.icon('max', 15)}</button>
+          <button class="wbtn" data-act="panel" title="系列パネル">${U.icon('panel', 15)}</button>
+          <button class="wbtn" data-act="png" title="PNG 保存">${U.icon('download', 15)}</button>
+          <button class="wbtn" data-act="copy" title="画像コピー">${U.icon('copy', 15)}</button>
+          <button class="wbtn" data-act="dup" title="複製">${U.icon('dup', 15)}</button>
+          <button class="wbtn" data-act="max" title="最大化 / 元に戻す">${U.icon('max', 15)}</button>
           <button class="wbtn wbtn-close" data-act="close" title="閉じる">${U.icon('close', 15)}</button>
         </div>
       </header>
@@ -46,14 +46,14 @@
           <div class="plot"></div>
           <div class="cur-line"></div>
           <div class="cur-tag"></div>
-          <div class="plot-empty">表示する系列がありません</div>
+          <div class="plot-empty">系列なし</div>
         </div>
         <aside class="spanel">
           <div class="sp-head">
-            <span class="sp-x" title="カーソル位置（プロットをクリックで固定）">—</span>
+            <span class="sp-x" title="カーソル位置">—</span>
             <span class="sp-tools">
-              <button class="sp-btn" data-sp="all" title="すべて表示">全表示</button>
-              <button class="sp-btn" data-sp="none" title="すべて非表示">全非表示</button>
+              <button class="sp-btn" data-sp="all">全表示</button>
+              <button class="sp-btn" data-sp="none">全非表示</button>
             </span>
           </div>
           <div class="sp-list"></div>
@@ -360,10 +360,11 @@
     const dsIds = S.windowDatasetIds(win), multi = dsIds.length > 1;
     rt.rows = [];
     rt.profileVal = null;
-    if (win.y1Kind === 'PSD' && S.profile.points.length >= 2) {
-      const row = U.h('div', {class: 'sp-row sp-profile' + (win.showProfile ? '' : ' off'), title: 'クリックで表示 / 非表示'});
+    const prof = S.profileOf(win.y1Kind);
+    if (prof && prof.points.length >= 2) {
+      const row = U.h('div', {class: 'sp-row sp-profile' + (win.showProfile ? '' : ' off')});
       row.innerHTML = `<span class="sp-sw">${U.lineSample(PL.PROFILE_COLOR, 'solid')}</span><span class="sp-name"></span><span class="sp-val">—</span>`;
-      row.querySelector('.sp-name').textContent = S.profile.name;
+      row.querySelector('.sp-name').textContent = prof.name;
       row.addEventListener('click', () => { win.showProfile = !win.showProfile; VT.app.onVisibilityChanged(win); });
       list.appendChild(row);
       rt.profileVal = row.querySelector('.sp-val');
@@ -373,7 +374,7 @@
       const items = all.filter(it => it.s.datasetId === dsId);
       if (multi) {
         const shown = items.filter(it => !win.hidden[it.s.id]).length;
-        const g = U.h('div', {class: 'sp-group' + (shown ? '' : ' off'), title: 'クリックでこのデータセットをまとめて表示 / 非表示'},
+        const g = U.h('div', {class: 'sp-group' + (shown ? '' : ' off')},
           U.h('span', {class: 'sp-gname'}, S.dataset(dsId).name), U.h('span', {class: 'sp-gcount'}, `${shown}/${items.length}`));
         g.addEventListener('click', () => {
           for (const it of items) { if (shown) win.hidden[it.s.id] = true; else delete win.hidden[it.s.id]; }
@@ -383,7 +384,7 @@
       }
       for (const {s, axis} of items) {
         const row = U.h('div', {class: 'sp-row' + (win.hidden[s.id] ? ' off' : ''),
-          title: `${s.path}${s.meta.label ? '\n' + s.meta.label : ''}\nクリック: 表示切替 / Ctrl+クリック: これだけ表示 / 名前をダブルクリック: 名前を変更`});
+          title: `${s.path}${s.meta.label ? '\n' + s.meta.label : ''}`});
         row.innerHTML = `<span class="sp-sw">${U.lineSample(S.colorOf(s), S.dashOf(win, s, axis))}</span><span class="sp-name"></span>${axis === 2 ? '<span class="sp-ax">Y2</span>' : ''}<span class="sp-val">—</span>`;
         // データセット名はグループの見出しにあるので、行には付けない
         const nameEl = row.querySelector('.sp-name');
@@ -405,7 +406,7 @@
         rt.rows.push({s, val: row.querySelector('.sp-val')});
       }
     }
-    if (!all.length) list.appendChild(U.h('div', {class: 'sp-empty'}, 'このグラフに該当する系列がありません'));
+    if (!all.length) list.appendChild(U.h('div', {class: 'sp-empty'}, '系列なし'));
     rt.empty.style.display = all.some(it => !win.hidden[it.s.id]) ? 'none' : '';
     W.updatePanelValues(win);
   };
@@ -448,7 +449,8 @@
       r.val.textContent = (x == null || win.hidden[r.s.id]) ? '—' : U.fmtValue(A.interp(x, r.s.x, r.s.y), r.s.kind);
     }
     if (rt.profileVal) {
-      const v = x == null || !win.showProfile ? null : A.profileAt(S.profile.points, x);
+      const prof = S.profileOf(win.y1Kind);
+      const v = x == null || !win.showProfile || !prof ? null : PL.profileValue(win, A.profileAt(prof.points, x));
       rt.profileVal.textContent = v == null ? '—' : U.fmt(v);
     }
   };

@@ -50,10 +50,12 @@
   // PSD [G²/Hz] → 実効値 [Grms]
   A.psdRms = (xs, ys, lo, hi) => Math.sqrt(Math.max(A.trapz(xs, ys, lo, hi), 0));
 
-  // dB で記録された系列を線形量に戻す（解析用。PSD は電力量なので 10、振幅量は 20）
+  // dB の係数（PSD は電力量なので 10·log10、振幅量は 20·log10）
+  A.dbScale = kind => kind === 'PSD' ? 10 : 20;
+  // dB で記録された系列を線形量に戻す（解析用）
   A.linearY = function (s) {
     if (!s.meta || !s.meta.yDb) return s.y;
-    const k = s.kind === 'PSD' ? 10 : 20;
+    const k = A.dbScale(s.kind);
     return s.y.map(v => Math.pow(10, v / k));
   };
 
@@ -100,10 +102,11 @@
     return s;
   };
   A.profileRms = (pts, lo, hi) => Math.sqrt(Math.max(A.profileArea(pts, lo, hi), 0));
-  A.slopeDbOct = (a, b) => 10 * Math.log10(b.v / a.v) / Math.log2(b.f / a.f);
+  // k: dB の係数（A.dbScale）
+  A.slopeDbOct = (a, b, k = 10) => k * Math.log10(b.v / a.v) / Math.log2(b.f / a.f);
 
-  // 許容範囲チェック（PSD は電力量なので dB = 10·log10）
-  A.toleranceCheck = function (s, pts, tolPlus, tolMinus, lo, hi) {
+  // 許容範囲チェック（偏差 = k·log10(実測 / 基準) [dB]）
+  A.toleranceCheck = function (s, pts, tolPlus, tolMinus, lo, hi, k = 10) {
     let maxP = -Infinity, maxM = Infinity, fail = 0, total = 0, worstF = null, worst = 0;
     for (let i = 0; i < s.x.length; i++) {
       const f = s.x[i], v = s.y[i];
@@ -111,7 +114,7 @@
       const ref = A.profileAt(pts, f);
       if (!(ref > 0) || !(v > 0)) continue;
       total++;
-      const dev = 10 * Math.log10(v / ref);
+      const dev = k * Math.log10(v / ref);
       if (dev > maxP) maxP = dev;
       if (dev < maxM) maxM = dev;
       if (dev > tolPlus || dev < -tolMinus) {

@@ -59,8 +59,8 @@
     const win = S.activeWin();
     if (!win) {
       body.appendChild(U.h('div', {class: 'sb-empty'}, S.series.length
-        ? 'グラフをクリックして選択すると、ここでタイトル・軸ラベル・範囲などを設定できます。'
-        : 'データを読み込むと、選択したグラフの設定がここに表示されます。'));
+        ? 'グラフ未選択'
+        : 'データなし'));
       return;
     }
     const labelInput = (key, auto) => {
@@ -71,15 +71,14 @@
       }, 150));
       return inp;
     };
-    const showTitle = checkbox('表示', win.showTitle, v => { win.showTitle = v; VT.app.onLabelsChanged(win); }, 'グラフ内にタイトルを表示');
+    const showTitle = checkbox('表示', win.showTitle, v => { win.showTitle = v; VT.app.onLabelsChanged(win); });
     body.appendChild(U.h('div', {class: 'sb-target'}, U.h('span', {class: 'sb-target-l'}, '編集中'), U.h('span', {class: 'sb-target-t'}, S.titleOf(win))));
     body.appendChild(section('ラベル',
       field('タイトル', U.h('div', {class: 'row'}, labelInput('title', S.autoTitle(win)), showTitle)),
       field('X 軸', labelInput('xLabel', S.autoXLabel(win))),
       field(win.y2Kind ? 'Y 軸（左）' : 'Y 軸', labelInput('yLabel', S.autoYLabel(win, 1))),
       win.y2Kind ? field('Y 軸（右）', labelInput('y2Label', S.autoYLabel(win, 2))) : null,
-      field('凡例', select(PL.LEGEND_LABEL, win.legend.pos, v => { win.legend.pos = v; win.legend.custom = null; VT.plot.render(win); })),
-      U.h('p', {class: 'hint'}, '')));
+      field('凡例', select(PL.LEGEND_LABEL, win.legend.pos, v => { win.legend.pos = v; win.legend.custom = null; VT.plot.render(win); }))));
 
     const kinds = S.kinds();
     const kindOpts = {};
@@ -103,7 +102,6 @@
         }));
       }
       dataSec.appendChild(field('データセット', box));
-      dataSec.appendChild(U.h('p', {class: 'hint'}, ''));
     }
     body.appendChild(dataSec);
 
@@ -132,21 +130,21 @@
       });
       return U.h('div', {class: 'axis-row'}, U.h('span', {class: 'axis-name'}, label), mk('min'), U.h('span', {class: 'dash'}, '–'), mk('max'), seg);
     };
-    const reset = U.h('button', {class: 'btn btn-sm', type: 'button'}, '全体表示に戻す');
+    const reset = U.h('button', {class: 'btn btn-sm', type: 'button'}, 'リセット');
     reset.addEventListener('click', () => VT.app.resetAxes(win));
-    body.appendChild(section('軸の範囲とスケール',
+    body.appendChild(section('軸',
       axisRow('x', 'X'), axisRow('y', win.y2Kind ? 'Y左' : 'Y'), win.y2Kind ? axisRow('y2', 'Y右') : null,
-      U.h('div', {class: 'row between'}, U.h('span', {class: 'hint'}, ''), reset)));
+      U.h('div', {class: 'row between'}, U.h('span'), reset)));
 
-    const lw = U.h('input', {type: 'range', min: 0.5, max: 4, step: 0.25, value: win.lineWidth, 'aria-label': '線の太さ'});
+    const lw = U.h('input', {type: 'range', min: 0.5, max: 4, step: 0.25, value: win.lineWidth, 'aria-label': '線幅'});
     const lwVal = U.h('span', {class: 'num'}, win.lineWidth.toFixed(2));
     const renderLater = U.debounce(() => VT.plot.render(win), 60);
     lw.addEventListener('input', () => { win.lineWidth = +lw.value; lwVal.textContent = (+lw.value).toFixed(2); renderLater(); });
     body.appendChild(section('表示',
-      field('線の太さ', U.h('div', {class: 'row'}, lw, lwVal)),
-      win.y1Kind === 'PSD' ? checkbox('加振プロファイルと許容帯を表示', win.showProfile, v => { win.showProfile = v; VT.app.onVisibilityChanged(win); }) : null,
-      checkbox('ピーク解析の注釈を表示', win.showPeaks, v => { win.showPeaks = v; VT.plot.render(win); }),
-      checkbox('系列パネル（カーソル値）を表示', win.showPanel, v => { win.showPanel = v; VT.win.applyRect(win); })));
+      field('線幅', U.h('div', {class: 'row'}, lw, lwVal)),
+      S.profileOf(win.y1Kind) ? checkbox('加振プロファイル', win.showProfile, v => { win.showProfile = v; VT.app.onVisibilityChanged(win); }) : null,
+      checkbox('ピーク注釈', win.showPeaks, v => { win.showPeaks = v; VT.plot.render(win); }),
+      checkbox('系列パネル', win.showPanel, v => { win.showPanel = v; VT.win.applyRect(win); })));
 
     const out = (label, fn) => {
       const b = U.h('button', {class: 'btn btn-sm', type: 'button'}, label);
@@ -158,8 +156,7 @@
       U.h('div', {class: 'row gap'},
         out('PNG 保存', () => VT.app.windowAction(win, 'png')),
         out('SVG 保存', () => VT.plot.download(win, 'svg').catch(e => U.toast(e.message, 'err'))),
-        out('コピー', () => VT.app.windowAction(win, 'copy'))),
-      U.h('p', {class: 'hint'}, '')));
+        out('コピー', () => VT.app.windowAction(win, 'copy')))));
   }
 
   I.syncRanges = function () {
@@ -191,7 +188,7 @@
       return b;
     };
     if (!S.datasets.length) {
-      body.appendChild(U.h('div', {class: 'sb-empty'}, 'データがありません。ファイルやフォルダをドラッグ＆ドロップするか、下のボタンから読み込んでください。'));
+      body.appendChild(U.h('div', {class: 'sb-empty'}, 'データなし'));
       body.appendChild(U.h('div', {class: 'row gap pad'}, add('ファイルを開く', 'in-files'), add('フォルダを開く', 'in-dir')));
       return;
     }
@@ -203,14 +200,14 @@
         const v = name.value.trim();
         if (v) { d.name = v; VT.app.onDatasetRenamed(); } else name.value = d.name;
       });
-      const del = U.h('button', {class: 'icon-btn danger', type: 'button', title: 'このデータセットを削除', html: U.icon('trash', 15)});
-      del.addEventListener('click', () => { if (confirm(`データセット「${d.name}」を削除しますか？`)) VT.app.removeDataset(d.id); });
+      const del = U.h('button', {class: 'icon-btn danger', type: 'button', title: '削除', html: U.icon('trash', 15)});
+      del.addEventListener('click', () => { if (confirm(`「${d.name}」を削除しますか？`)) VT.app.removeDataset(d.id); });
       const dt = (ser.find(s => s.meta.dateTime) || {meta: {}}).meta.dateTime;
       const kinds = S.kinds().filter(k => ser.some(s => s.kind === k));
       const info = U.h('div', {class: 'ds-info'},
         U.h('div', null, `${ser.length} 系列${dt ? ' · ' + dt : ''}`),
         U.h('div', {class: 'ds-kinds'}, kinds.map(k => U.h('span', {class: 'tag'},`${P.kindLabel(k)} ${ser.filter(s => s.kind === k).length}`))));
-      const details = U.h('details', {class: 'ds-series'}, U.h('summary', null, '系列の名前と色'));
+      const details = U.h('details', {class: 'ds-series'}, U.h('summary', null, '系列名・色'));
       details.addEventListener('toggle', () => {
         if (details.open && !details.dataset.built) { details.dataset.built = '1'; buildSeriesRows(details, ser); }
       });
@@ -220,12 +217,12 @@
     body.appendChild(sec);
 
     const chs = U.unique(S.series.map(s => s.channel)).sort(U.naturalCompare);
-    const sec2 = section('チャンネル名と色（全グラフ共通）');
+    const sec2 = section('チャンネル名・色');
     const recolor = U.debounce(() => VT.app.onColorsChanged(), 80);
     const rename = U.debounce(() => VT.app.onSeriesRenamed(false), 200);
     for (const ch of chs) {
       const key = P.colorKey(ch);
-      const color = U.h('input', {type: 'color', class: 'clr', value: S.keyColor(key), title: key !== ch ? `色は ${key} と共通` : '線の色'});
+      const color = U.h('input', {type: 'color', class: 'clr', value: S.keyColor(key), title: key !== ch ? `${key} と共通` : '色'});
       color.addEventListener('input', () => { S.channelColors[key] = color.value; recolor(); });
       const alias = U.h('input', {type: 'text', class: 'inp', value: S.channelAlias[ch] || '', placeholder: ch, 'aria-label': `${ch} の表示名`, spellcheck: false});
       alias.addEventListener('input', () => {
@@ -235,7 +232,6 @@
       });
       sec2.appendChild(U.h('div', {class: 'ch-row'}, color, U.h('span', {class: 'ch-id'}, ch), alias));
     }
-    sec2.appendChild(U.h('p', {class: 'hint'}, ''));
     body.appendChild(sec2);
   }
 
@@ -245,7 +241,7 @@
     const recolor = U.debounce(() => VT.app.onColorsChanged(), 80);
     const rename = U.debounce(() => VT.app.onSeriesRenamed(false), 200);
     for (const s of ser.slice().sort((a, b) => (order.get(a.kind) - order.get(b.kind)) || U.naturalCompare(a.channel, b.channel))) {
-      const color = U.h('input', {type: 'color', class: 'clr', value: S.colorOf(s), title: 'この系列だけの色'});
+      const color = U.h('input', {type: 'color', class: 'clr', value: S.colorOf(s), title: '系列の色'});
       color.addEventListener('input', () => { s.color = color.value; recolor(); });
       const nm = U.h('input', {type: 'text', class: 'inp', value: s.name || '', placeholder: S.channelName(s.channel), 'aria-label': '系列名', spellcheck: false});
       nm.addEventListener('input', () => { s.name = nm.value.trim() || null; rename(); });

@@ -7,17 +7,6 @@
 <meta name="description" content="加速度応答データ（ONOSOKKI DS2000 / Graduo のtxt出力）を描画する Web アプリ">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%231c1b18'/%3E%3Cpath d='M3 24c7 0 8-17 13-17s6 17 13 17' fill='none' stroke='white' stroke-width='2.6'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
-<script>
-  // BIZ UD ゴシックが入っていない環境（Mac など）だけ Google Fonts から読む
-  if (document.fonts) document.fonts.load('16px "VT Sans"')
-    .then(f => f.some(x => x.status === 'loaded') || Promise.reject())
-    .catch(() => {
-      const l = document.createElement('link');
-      l.rel = 'stylesheet';
-      l.href = 'https://fonts.googleapis.com/css2?family=BIZ+UDGothic:wght@400;700&family=BIZ+UDPGothic:wght@400;700&display=swap';
-      document.head.appendChild(l);
-    });
-</script>
 </head>
 <body>
 
@@ -29,33 +18,33 @@
   <div class="tb-sep"></div>
   <div class="tb-link" role="group" aria-label="連動">
     <span class="tb-label">連動</span>
-    <button class="tb-toggle" id="tg-cursor" type="button" aria-pressed="true" title="全グラフでカーソル（縦線と値）を連動">カーソル</button>
-    <button class="tb-toggle" id="tg-xlink" type="button" aria-pressed="true" title="ズーム・パンした X 範囲を全グラフに反映">X 範囲</button>
+    <button class="tb-toggle" id="tg-cursor" type="button" aria-pressed="true" title="カーソル連動">カーソル</button>
+    <button class="tb-toggle" id="tg-xlink" type="button" aria-pressed="true" title="X 範囲連動">X 範囲</button>
   </div>
   <div class="tb-sep"></div>
   <button class="tb-btn" id="btn-analysis" type="button"><i data-icon="peak"></i><span class="tb-text">解析</span><i data-icon="chevron" data-size="13" class="chev"></i></button>
   <button class="tb-btn" id="btn-save" type="button"><i data-icon="save"></i><span class="tb-text">保存</span><i data-icon="chevron" data-size="13" class="chev"></i></button>
   <div class="tb-spacer"></div>
   <span id="status" class="tb-status"></span>
-  <button class="tb-icon" id="btn-help" type="button" title="使い方"><i data-icon="help" data-size="18"></i></button>
-  <button class="tb-icon" id="btn-sidebar" type="button" title="サイドパネルの表示 / 非表示"><i data-icon="sidebar" data-size="18"></i></button>
+  <button class="tb-icon" id="btn-help" type="button" title="ヘルプ"><i data-icon="help" data-size="18"></i></button>
+  <button class="tb-icon" id="btn-sidebar" type="button" title="サイドパネル"><i data-icon="sidebar" data-size="18"></i></button>
 </header>
 
 <div id="main">
   <main id="workspace">
     <div id="welcome">
       <div class="start when-empty">
-        <h1>データを読み込む</h1>
-        <p class="start-lead">ONOSOKKI DS2000（Graduo）のtxt出力を開く or ファイル・フォルダをドロップ</p>
+        <h1>データ読み込み</h1>
+        <p class="start-lead">ONOSOKKI DS2000（Graduo）の txt 出力。ドロップでも可</p>
         <div class="start-actions">
           <button class="btn primary" type="button" data-act="files">ファイルを開く</button>
           <button class="btn" type="button" data-act="dir">フォルダを開く</button>
           <button class="btn" type="button" data-act="session">セッションを開く</button>
-          <button class="btn" type="button" data-act="sample">サンプルで試す</button>
+          <button class="btn" type="button" data-act="sample">サンプルを開く</button>
         </div>
         <dl class="start-spec">
           <dt>対応データ</dt>
-          <dd>PSD、Spectrum（0-p / rms）、FRF（Real・Imag・Mag・Phase）、Coherence。文字コードは Shift_JIS / UTF-8。</dd>
+          <dd>PSD / Spectrum（0-p・rms）/ FRF（Real・Imag・Mag・Phase）/ Coherence（Shift_JIS・UTF-8）</dd>
           <dt>ファイル例</dt>
           <dd><pre>Label:, CH6: ﾊﾟﾜｰｽﾍﾟｸﾄﾙ
 DataKind:, CH6, PowerSpec, Mag
@@ -65,8 +54,7 @@ Y-AxisMagniude:, 0-p
         </dl>
       </div>
       <div class="start when-data">
-        <h1>グラフがありません</h1>
-        <p class="start-lead">表示するデータ種を選択</p>
+        <h1>グラフ追加</h1>
         <div class="start-actions" id="welcome-kinds"></div>
       </div>
     </div>
@@ -80,7 +68,7 @@ Y-AxisMagniude:, 0-p
   </aside>
 </div>
 
-<div id="drop-overlay"><div>ドロップして読み込む<br><small>ファイル・フォルダ（フォルダごとにデータセット）・セッション（.json）</small></div></div>
+<div id="drop-overlay"><div>ドロップで読み込み<br><small>ファイル / フォルダ / セッション（.json）</small></div></div>
 <div id="toasts" aria-live="polite"></div>
 <input type="file" id="in-files" multiple accept=".txt,.csv,.dat,.tsv,text/plain" hidden>
 <input type="file" id="in-dir" webkitdirectory multiple hidden>

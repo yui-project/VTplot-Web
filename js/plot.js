@@ -4,9 +4,8 @@
   const S = VT.state, P = VT.parser, A = VT.analysis, U = VT.util;
   const PL = VT.plot = {};
 
-  // 画像出力（SVG を画像として描く）では @font-face の別名が使えないため、実在の書体名も並べる
-  PL.FONT = '"VT Sans", "BIZ UDPGothic", "Hiragino Sans", "Yu Gothic", sans-serif';
-  PL.MONO = '"VT Mono", "BIZ UDGothic", Consolas, monospace';
+  PL.FONT = 'Arial, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif';
+  PL.MONO = 'Consolas, Menlo, monospace';
   PL.INK = '#1c1b18';
   PL.SIGNAL = '#c54a1c';
   PL.PROFILE_COLOR = PL.INK;
@@ -19,16 +18,16 @@
     bl: {x: 0.01, y: 0.01, xanchor: 'left', yanchor: 'bottom'},
     out: {x: 1.02, y: 1, xanchor: 'left', yanchor: 'top'},
   };
-  PL.LEGEND_LABEL = {auto: '自動（8 系列以下なら表示）', none: '表示しない', tr: '右上', tl: '左上', br: '右下', bl: '左下', out: 'グラフの外（右）'};
-  PL.EXPORT_SIZES = {screen: '画面と同じ', '640x400': '640 × 400', '800x500': '800 × 500', '1000x600': '1000 × 600', '1200x800': '1200 × 800'};
+  PL.LEGEND_LABEL = {auto: '自動', none: 'なし', tr: '右上', tl: '左上', br: '右下', bl: '左下', out: '外側（右）'};
+  PL.EXPORT_SIZES = {screen: '画面サイズ', '640x400': '640 × 400', '800x500': '800 × 500', '1000x600': '1000 × 600', '1200x800': '1200 × 800'};
 
   const DICT = {
-    'Zoom': 'ズーム（範囲をドラッグ）', 'Pan': 'パン（ドラッグで移動）', 'Zoom in': '拡大', 'Zoom out': '縮小',
-    'Click to enter Plot title': 'クリックしてタイトルを入力',
-    'Click to enter X axis title': 'クリックして X 軸ラベルを入力',
-    'Click to enter Y axis title': 'クリックして Y 軸ラベルを入力',
+    'Zoom': 'ズーム', 'Pan': 'パン', 'Zoom in': '拡大', 'Zoom out': '縮小',
+    'Click to enter Plot title': 'タイトル',
+    'Click to enter X axis title': 'X 軸ラベル',
+    'Click to enter Y axis title': 'Y 軸ラベル',
     'Click to enter Plot subtitle': ' ',   // サブタイトルは使わないので案内文を出さない
-    'Double-click to zoom back out': 'ダブルクリックで全体表示に戻ります',
+    'Double-click to zoom back out': 'ダブルクリックで全体表示',
   };
 
   // ── 範囲の計算 ──────────────────────────────────────────────────────────────
@@ -119,6 +118,13 @@
     return {sym: null, axis: ax};
   }
 
+  // プロファイル値（線形量）を、そのグラフの Y1 の値に合わせる（dB で記録された種類なら dB に直す）
+  PL.profileValue = function (win, v) {
+    if (v == null) return null;
+    const s = S.sampleOf(win.y1Kind);
+    return s && s.meta.yDb ? A.dbScale(win.y1Kind) * Math.log10(v) : v;
+  };
+
   // ── 図の組み立て ────────────────────────────────────────────────────────────
   PL.build = function (win) {
     const {y1, y2} = S.windowSeries(win);
@@ -147,23 +153,24 @@
     vis1.forEach(s => addSeries(s, 1, Y1.sym));
     vis2.forEach(s => addSeries(s, 2, Y2 && Y2.sym));
 
-    // 加振プロファイルと許容帯（PSD のみ）
-    const pts = S.profile.points;
-    if (win.y1Kind === 'PSD' && win.showProfile && pts.length >= 2) {
-      const tf = Y1.sym ? Y1.sym.f : (v => v);
-      const up = Math.pow(10, S.profile.tolPlus / 10), dn = Math.pow(10, -S.profile.tolMinus / 10);
+    // 加振プロファイルと許容帯（PSD・Spectrum）
+    const prof = S.profileOf(win.y1Kind), pts = prof ? prof.points : [];
+    if (win.showProfile && pts.length >= 2) {
+      const tf = v => { const u = PL.profileValue(win, v); return Y1.sym ? Y1.sym.f(u) : u; };
+      const k = A.dbScale(win.y1Kind);
+      const up = Math.pow(10, prof.tolPlus / k), dn = Math.pow(10, -prof.tolMinus / k);
+      // 点の間は両対数で直線。Y 軸が線形・dB でも形が合うよう細かく刻む（角の点も含める）
       const f0 = pts[0].f, f1 = pts[pts.length - 1].f, N = 240;
-      const bx = [], bu = [], bl = [];
-      for (let i = 0; i <= N; i++) {
-        const f = f0 * Math.pow(f1 / f0, i / N), v = A.profileAt(pts, f);
-        bx.push(f); bu.push(tf(v * up)); bl.push(tf(v * dn));
-      }
-      traces.push({type: 'scatter', mode: 'lines', x: bx.concat(bx.slice().reverse()), y: bu.concat(bl.slice().reverse()),
+      const fs = U.unique(pts.map(p => p.f).concat(Array.from({length: N + 1}, (_, i) => U.clamp(f0 * Math.pow(f1 / f0, i / N), f0, f1))))
+        .sort((a, b) => a - b);
+      const vs = fs.map(f => A.profileAt(pts, f));
+      traces.push({type: 'scatter', mode: 'lines', x: fs.concat(fs.slice().reverse()),
+        y: vs.map(v => tf(v * up)).concat(vs.map(v => tf(v * dn)).reverse()),
         fill: 'toself', fillcolor: 'rgba(28,27,24,0.06)', line: {color: 'rgba(28,27,24,0.4)', width: 1, dash: 'dot'},
         hoverinfo: 'skip', showlegend: false, name: 'tolerance'});
       ids.push(null);
-      traces.push({type: 'scatter', mode: 'lines', x: pts.map(p => p.f), y: pts.map(p => tf(p.v)),
-        name: S.profile.name, line: {color: PL.PROFILE_COLOR, width: 2}, hoverinfo: 'skip'});
+      traces.push({type: 'scatter', mode: 'lines', x: fs, y: vs.map(tf),
+        name: prof.name, line: {color: PL.PROFILE_COLOR, width: 2}, hoverinfo: 'skip'});
       ids.push('__profile__');
     }
 
@@ -236,7 +243,7 @@
       displaylogo: false, responsive: false, scrollZoom: true, doubleClick: false, showTips: true,
       displayModeBar: 'hover',
       modeBarButtons: [['zoom2d', 'pan2d'], ['zoomIn2d', 'zoomOut2d', {
-        name: 'vt-reset', title: '全体表示（プロット上でダブルクリックでも可）', icon: Plotly.Icons.home,
+        name: 'vt-reset', title: '全体表示', icon: Plotly.Icons.home,
         click: () => VT.app.resetAxes(win),
       }]],
       edits: {titleText: !!win.showTitle, axisTitleText: true, legendText: true, legendPosition: true},
@@ -301,13 +308,16 @@
     if (!Array.isArray(ev) || !ev[0] || !('name' in ev[0])) return;
     const names = [].concat(ev[0].name), idx = [].concat(ev[1] == null ? [] : ev[1]);
     const ids = (win.rt.meta && win.rt.meta.ids) || [];
+    let profile = false;
     idx.forEach((ti, k) => {
       const id = ids[ti];
       const v = String(names[k] != null ? names[k] : names[0] || '').trim();
-      if (id === '__profile__') S.profile.name = v || '加振プロファイル';
+      const pr = id === '__profile__' && S.profileOf(win.y1Kind);
+      if (pr) { pr.name = v || '加振プロファイル'; profile = true; }
       else if (id) { const s = S.seriesById(id); if (s) s.name = v || null; }
     });
-    setTimeout(() => VT.app.onSeriesRenamed(), 0);
+    // プロファイル名は保存もする
+    setTimeout(() => (profile ? VT.app.onProfileChanged() : VT.app.onSeriesRenamed()), 0);
   }
 
   // ── 座標変換（カーソル表示用） ──────────────────────────────────────────────────
@@ -343,7 +353,7 @@
   PL.copy = async function (win) {
     const d = PL.exportDims(win);
     const url = await Plotly.toImage(win.rt.gd, Object.assign({format: 'png'}, d));
-    if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) throw new Error('このブラウザは画像のコピーに対応していません');
+    if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) throw new Error('このブラウザは画像コピー非対応');
     const blob = await (await fetch(url)).blob();
     await navigator.clipboard.write([new ClipboardItem({'image/png': blob})]);
   };
@@ -352,7 +362,7 @@
     let wins = S.windows.filter(w => w.rt.gd && w.rt.gd.clientWidth > 0);
     const maxed = wins.find(w => w.maximized);
     if (maxed) wins = [maxed];
-    if (!wins.length) throw new Error('出力するグラフがありません');
+    if (!wins.length) throw new Error('グラフなし');
     const boxes = wins.sort((a, b) => a.z - b.z).map(w => ({w, r: w.rt.el.querySelector('.win-body').getBoundingClientRect()}));
     const pad = 8, scale = 2;
     const x0 = Math.min(...boxes.map(b => b.r.left)) - pad, y0 = Math.min(...boxes.map(b => b.r.top)) - pad;

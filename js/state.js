@@ -9,7 +9,11 @@
   const DASH1 = ['solid', 'dash', 'dot', 'dashdot', 'longdash', 'longdashdot'];
   const DASH2 = ['dot', 'dashdot', 'longdashdot', 'dash', 'longdash', 'solid'];
 
-  const DEFAULT_PROFILE = () => ({points: [], tolPlus: 3, tolMinus: 3, name: '加振プロファイル'});
+  // 加振プロファイルはランダム（PSD）と正弦波掃引（Spectrum）で別々に持つ。許容幅の既定は ±3 dB / ±1 dB
+  const PROFILE_KINDS = ['PSD', 'SPEC'];
+  const DEFAULT_TOL = {PSD: 3, SPEC: 1};
+  const defaultProfiles = () => Object.fromEntries(PROFILE_KINDS.map(k =>
+    [k, {points: [], tolPlus: DEFAULT_TOL[k], tolMinus: DEFAULT_TOL[k], name: '加振プロファイル'}]));
 
   const S = VT.state = {
     datasets: [],      // [{id, name}]
@@ -17,7 +21,7 @@
     windows: [],       // グラフウィンドウ（下の makeWindow 参照）
     channelAlias: {},  // チャンネル → 表示名
     channelColors: {}, // 色キー（CH9 など）→ 色
-    profile: DEFAULT_PROFILE(),
+    profiles: defaultProfiles(),   // 種類（PSD / SPEC）→ {points, tolPlus, tolMinus, name}
     peaks: null,       // ピーク解析結果
     cursor: {x: null, locked: false, winId: null, unit: null},
     link: {cursor: true, x: true},
@@ -28,6 +32,17 @@
   S.TAB10 = TAB10;
   S.DASH1 = DASH1;
   S.DASH2 = DASH2;
+  S.PROFILE_KINDS = PROFILE_KINDS;
+
+  // プロファイルを持てない種類は null
+  S.profileOf = kind => S.profiles[kind] || null;
+  // 保存されていたプロファイルを既定値に重ねる（legacy: 1 つだけ持っていた頃の PSD 用）
+  S.mergeProfiles = function (saved, legacy) {
+    const out = defaultProfiles();
+    if (legacy && Array.isArray(legacy.points)) Object.assign(out.PSD, legacy);
+    for (const k of PROFILE_KINDS) if (saved && saved[k] && Array.isArray(saved[k].points)) Object.assign(out[k], saved[k]);
+    return out;
+  };
 
   S.dataset = id => S.datasets.find(d => d.id === id);
   S.seriesById = id => S.series.find(s => s.id === id);
@@ -177,19 +192,19 @@
       series: S.series,
       channelAlias: S.channelAlias,
       channelColors: S.channelColors,
-      profile: S.profile,
+      profiles: S.profiles,
       link: S.link,
       activeWinId: S.activeWinId,
       windows: S.windows.map(w => { const o = Object.assign({}, w); delete o.rt; return o; }),
     };
   };
   S.restore = function (obj) {
-    if (!obj || obj.app !== 'VTplot Web' || !Array.isArray(obj.series)) throw new Error('VTplot Web のセッションファイルではありません');
+    if (!obj || obj.app !== 'VTplot Web' || !Array.isArray(obj.series)) throw new Error('非対応のファイル');
     S.datasets = obj.datasets || [];
     S.series = obj.series;
     S.channelAlias = obj.channelAlias || {};
     S.channelColors = obj.channelColors || {};
-    S.profile = Object.assign(DEFAULT_PROFILE(), obj.profile || {});
+    S.profiles = S.mergeProfiles(obj.profiles, obj.profile);
     S.link = Object.assign({cursor: true, x: true}, obj.link || {});
     S.peaks = null;
     S.cursor = {x: null, locked: false, winId: null, unit: null};
